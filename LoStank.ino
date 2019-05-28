@@ -10,7 +10,7 @@ const int DataPin = 19; //these need to be interrupt capable or something...
 const int IRQpin =  18;
 
 //ir input
-int RECV_PIN = 19;
+int RECV_PIN = 20;
 
 //motor pins
 const int ldir = 50;
@@ -30,11 +30,13 @@ bool lmov = false;
 
 //leds for debugging
 const int rled = 13; // motion indication led
-const int lled = 3; // error indication
+const int lled = 3; // not currently used
 const int rmled = 6; //right motor led indication
 const int lmled = 5; // left motor led indication
 const int gled = 4; // ostensably step led.
 
+const int bump = 12; //endstop/forward collision detection
+bool wall;
 
 IRrecv irrecv(RECV_PIN);
 decode_results results;
@@ -60,11 +62,14 @@ void setup() {
  pinMode(lmled,OUTPUT);
  pinMode(gled,OUTPUT);
 
+ pinMode(bump, INPUT);
+
  digitalWrite(lfault, LOW); //default steppers to off
  digitalWrite(rfault, LOW);
  digitalWrite(ldir, LOW);
- digitalWrite(rdir, LOW); //direction assignments are kindof arbitrary
+ digitalWrite(rdir, HIGH); //motors oppose each other, starting opposite actually means they rotate the same way
 
+ 
  Serial.println("setup complete");
 }
 
@@ -79,43 +84,43 @@ void loop() {
 }
 
 void look(){
-  if (keyboard.available){
-    char c = keyboard.read();//read keyboard input
-
+  if (keyboard.available || irrecv.decode(&results)){
+    char c = keyboard.read();//read keyboard
+    unsigned long int d = results.value;// read remote
     /*
      * main keyboard keylist:
      * 
-     * 1 - toggle left motor fault/sleep pin. enable or disable left side motor
-     * 3 - toggle right motor fault/sleep pin. enable or disable right side motor
-     * 4 - toggle left motor direction
-     * 6 - toggle right motor direction
-     * 5 - will trigger a step. if you hold it will continue to move
-     * 8 - toggles the motion flag, will cause motion to continue
+     * 1|1 - toggle left motor fault/sleep pin. enable or disable left side motor
+     * 3|3 - toggle right motor fault/sleep pin. enable or disable right side motor
+     * 4|4 - toggle left motor direction
+     * 6|6 - toggle right motor direction
+     * 5|5 - will trigger a step. if you hold it will continue to move
+     * 8|W - toggles the motion flag, will cause motion to continue
      * 7 - reduces step delay, increases rotation speed
      * 9 - increase step delay, reduce rotation speed
      */
     
     // toggle fault pins for left and right motor
-    if (c == '1'){
+    if (c == '1' || d == 0xF710EF ){
       digitalWrite(lfault, !digitalRead(lfault));
       Serial.println("lfault");
     }
-    if (c == '3'){
+    if (c == '3'|| d == 0xF750AF ){
       digitalWrite(rfault, !digitalRead(rfault));
       Serial.println("rfault");
     }
 
     // toggle the direction pins for left and right motors
-    if (c == '4'){
+    if (c == '4' ||d == 0xF730CF ){
       Serial.println("left direction changer");
       digitalWrite(ldir, !digitalRead(ldir));
       
     }
-    if (c == '6'){
+    if (c == '6' ||d == 0xF7708F ){
       digitalWrite(rdir, !digitalRead(rdir));
       Serial.println("right direction changer");
     }
-    if (c=='5'){
+    if (c=='5'|| d == 0xF7B04F ){
       digitalWrite(gstep, HIGH);
       Serial.println("one step");
     }
@@ -124,7 +129,7 @@ void look(){
       spd = spd - 10;
     }
 
-    if (c == '8'){  //stop/go
+    if (c == '8'|| c == 0xF7E01F ){  //toggle movement flag, 
       lmov = !lmov;
       Serial.println("STOP... or go, something");
     }
@@ -175,4 +180,7 @@ void rst(){
   digitalWrite(lmled, !digitalRead(lfault)); //update left motor led
   digitalWrite(rmled, !digitalRead(rfault));// update right motor led
   digitalWrite(rled, lmov); //motion indication led
+
+  
 }
+
